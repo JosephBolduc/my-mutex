@@ -18,7 +18,24 @@ class Mutex
 
 class Tournament : public Mutex
 {
+    int threadCount;
 
+
+    public:
+    Tournament(int threadCt)
+    {
+        threadCount = threadCt;
+    }
+
+    void Lock()
+    {
+
+    }
+
+    void Unlock()
+    {
+
+    }
 };
 
 class TestAndSet : public Mutex
@@ -28,11 +45,15 @@ class TestAndSet : public Mutex
     public:
     void Lock()
     {
+        std::string msg = "Locking from thread" + std::to_string(pthread_self()) +"\n";
+        cout << msg;
         while(flag.test_and_set());
     }
 
     void Unlock()
     {
+        std::string msg = "Unlocking from thread" + std::to_string(pthread_self()) + "\n";
+        cout << msg;
         flag.clear();
     }
 
@@ -59,6 +80,12 @@ class FetchAndIncrement : public Mutex
 
 };
 
+struct argPasser
+{
+    Mutex* mutex;
+    int* sharedCounter;
+};
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
@@ -83,12 +110,30 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    Mutex* mutex = new FetchAndIncrement();
+
+    Mutex* mutex;
+    switch (algoMode)
+    {
+    case 0:
+        mutex = new Tournament(threadCt);
+        break;
+    case 1:
+        mutex = new TestAndSet();
+        break;
+    case 2:
+        mutex = new FetchAndIncrement();
+        break;
+    default:
+        return -1;
+    }
+
+    int sharedCounter = 0;
+    argPasser args = {mutex, &sharedCounter};
 
     for (size_t i = 0; i < threadCt; i++)
     {
         pthread_t newThread;
-        pthread_create(&newThread, NULL, threadFunction, mutex);
+        pthread_create(&newThread, NULL, threadFunction, &args);
         threads.push_back(newThread);
     }
 
@@ -98,12 +143,12 @@ int main(int argc, char *argv[])
 // Do thread stuff in here
 void *threadFunction(void* arg)
 {
-    Mutex* mutex = reinterpret_cast<Mutex*>(arg);
+    argPasser* args = reinterpret_cast<argPasser*>(arg);
 
-    mutex->Lock();
+    args->mutex->Lock();
     pthread_t self = pthread_self();
     cout << "Current thread is " << self << "\n";
-    mutex->Unlock();
+    args->mutex->Unlock();
 
     pthread_exit(NULL);
 }
