@@ -9,6 +9,56 @@ using std::vector;
 
 void *threadFunction(void*);
 
+class Mutex
+{
+    public:
+    virtual void Lock() = 0;
+    virtual void Unlock() = 0;
+};
+
+class Tournament : public Mutex
+{
+
+};
+
+class TestAndSet : public Mutex
+{
+    std::atomic_flag flag;
+
+    public:
+    void Lock()
+    {
+        while(flag.test_and_set());
+    }
+
+    void Unlock()
+    {
+        flag.clear();
+    }
+
+};
+
+class FetchAndIncrement : public Mutex
+{
+    std::atomic_int counter;
+
+    void Lock()
+    {
+        int ticket = counter++;
+        std::string msg = "Locking from thread" + std::to_string(pthread_self()) + "with ticket = " + std::to_string(ticket) + "\n";
+        cout << msg;
+        while(counter == ticket);
+    }
+
+    void Unlock()
+    {
+        std::string msg = "UnLocking from thread" + std::to_string(pthread_self()) + "\n";
+        cout << msg;
+        ++counter;
+    }
+
+};
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
@@ -33,32 +83,27 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    Mutex* mutex = new FetchAndIncrement();
+
     for (size_t i = 0; i < threadCt; i++)
     {
         pthread_t newThread;
-        pthread_create(&newThread, NULL, threadFunction, NULL);
+        pthread_create(&newThread, NULL, threadFunction, mutex);
+        threads.push_back(newThread);
     }
+
+    for(auto thread : threads) pthread_join(thread, NULL);
 }
 
 // Do thread stuff in here
 void *threadFunction(void* arg)
 {
+    Mutex* mutex = reinterpret_cast<Mutex*>(arg);
+
+    mutex->Lock();
+    pthread_t self = pthread_self();
+    cout << "Current thread is " << self << "\n";
+    mutex->Unlock();
+
     pthread_exit(NULL);
 }
-
-class Mutex
-{
-    public:
-    virtual void Lock() = 0;
-    virtual void Unlock() = 0;
-};
-
-class TestAndSet : Mutex
-{
-
-};
-
-class FetchAndSet : Mutex
-{
-
-};
