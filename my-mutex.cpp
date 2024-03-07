@@ -38,46 +38,60 @@ class Tournament : public Mutex
     }
 };
 
+class Petersons : public Mutex
+{
+    std::atomic_bool flag[2];
+    std::atomic_int turn;
+    int pidA;
+    int pidB;
+
+    // Takes two thread ids that can use the mutex
+    Petersons(int A, int B)
+    {
+        pidA = A;
+        pidB = B;
+    }
+
+    void Lock()
+    {
+        pthread_t threadId = pthread_self();
+        if(threadId != pidA || threadId != pidB) throw std::exception();
+        int id = (pthread_self() == pidA) ? 0 : 1;
+
+        flag[id] = true;
+        turn = 1 - id;
+        while(flag[1-id] && turn != id);
+    }
+
+    void Unlock()
+    {
+        pthread_t threadId = pthread_self();
+        if(threadId != pidA || threadId != pidB) throw std::exception();
+        int id = (pthread_self() == pidA) ? 0 : 1;
+        flag[id] = false;
+    }
+};
+
 class TestAndSet : public Mutex
 {
     std::atomic_flag flag;
 
-    public:
-    void Lock()
-    {
-        //std::string msg = "Locking from thread" + std::to_string(pthread_self()) +"\n";
-        //cout << msg;
-        while(flag.test_and_set());
-    }
-
-    void Unlock()
-    {
-        //std::string msg = "Unlocking from thread" + std::to_string(pthread_self()) + "\n";
-        //cout << msg;
-        flag.clear();
-    }
-
+    void Lock() { while(flag.test_and_set()); }
+    void Unlock() { flag.clear(); }
 };
 
 class FetchAndIncrement : public Mutex
 {
-    std::atomic_int counter;
+    std::atomic_ullong token;
+    std::atomic_ullong turn;
 
     void Lock()
     {
-        int ticket = counter++;
-        //std::string msg = "Locking from thread" + std::to_string(pthread_self()) + "with ticket = " + std::to_string(ticket) + "\n";
-        //cout << msg;
-        while(counter == ticket);
+        int ticket = token++;
+        while(ticket != turn);
     }
 
-    void Unlock()
-    {
-        //std::string msg = "UnLocking from thread" + std::to_string(pthread_self()) + "\n";
-        //cout << msg;
-        ++counter;
-    }
-
+    void Unlock() { ++turn; }
 };
 
 struct argPasser
