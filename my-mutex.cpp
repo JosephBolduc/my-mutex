@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <math.h>
 #include <atomic>
 #include <pthread.h>
 
@@ -19,55 +20,75 @@ class Mutex
 class Tournament : public Mutex
 {
     int threadCount;
+    vector<Petersons*> mutexList;
 
 
     public:
     Tournament(int threadCt)
     {
         threadCount = threadCt;
+        for(int i=0; i<threadCt; i++) mutexList.push_back(new Petersons());
     }
 
     void Lock()
     {
-
+        // TODO figure out which thread goes to which lock
+        vector<int> lockedList;
+        int currentLock;
+        do
+        {
+            mutexList[currentLock]->Lock();
+            lockedList.push_back(currentLock);
+            currentLock = ceil((float)currentLock / 2.0f) - 1;
+        } while (lockedList.back() != 0);
     }
 
     void Unlock()
     {
+        // TODO figure out which thread goes to which lock
+        vector<int> lockedList;
+        int currentLock;
+        do
+        {
+            lockedList.push_back(currentLock);
+            currentLock = getParentNodeIdx(currentLock);
+        } while (lockedList.back() != 0);
 
+        for (size_t idx = lockedList.size()-1; idx <= 0; idx--)
+        {
+            bool directionIsLeft;
+            if(getChildNode > )
+            mutexList[lockedList[idx]]->Unlock();
+        }
+    }
+
+    int getParentNodeIdx(int idx)
+    {
+        return ceil((float)idx / 2.0f) - 1;
+    }
+
+    int getChildNode(int idx, bool getLeft = true)
+    {
+        return 2 * idx + (getLeft ? 1 : 2);
     }
 };
 
-class Petersons : public Mutex
+class Petersons
 {
     std::atomic_bool flag[2];
     std::atomic_int turn;
-    int pidA;
-    int pidB;
-
-    // Takes two thread ids that can use the mutex
-    Petersons(int A, int B)
+public:
+    void Lock(bool isLeft)
     {
-        pidA = A;
-        pidB = B;
-    }
-
-    void Lock()
-    {
-        pthread_t threadId = pthread_self();
-        if(threadId != pidA || threadId != pidB) throw std::exception();
-        int id = (pthread_self() == pidA) ? 0 : 1;
-
+        int id = isLeft ? 0 : 1;
         flag[id] = true;
         turn = 1 - id;
         while(flag[1-id] && turn != id);
     }
 
-    void Unlock()
+    void Unlock(bool isLeft)
     {
-        pthread_t threadId = pthread_self();
-        if(threadId != pidA || threadId != pidB) throw std::exception();
-        int id = (pthread_self() == pidA) ? 0 : 1;
+        int id = isLeft ? 0 : 1;
         flag[id] = false;
     }
 };
