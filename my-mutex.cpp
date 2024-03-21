@@ -19,15 +19,27 @@ class Mutex
 
 class Tournament : public Mutex
 {
-    int threadCount;
-    vector<Petersons*> mutexList;
+    struct Node
+    {
+        Node* left;
+        Node* right;
+        Node* parent;
+        Petersons* mutex;
+        Node()
+        {
+            mutex = new Petersons();
+        }
+    };
 
+    vector<Node*> baseLayer;
+
+    int threadCount;
 
     public:
-    Tournament(int threadCt)
+    Tournament(vector<pthread_t> threads)
     {
-        threadCount = threadCt;
-        for(int i=0; i<threadCt; i++) mutexList.push_back(new Petersons());
+        threadCount = threads.size();
+        for(int i=0; i<threadCount; i++) mutexList.push_back(new Petersons());
     }
 
     void Lock()
@@ -42,6 +54,7 @@ class Tournament : public Mutex
             currentLock = ceil((float)currentLock / 2.0f) - 1;
         } while (lockedList.back() != 0);
     }
+
 
     void Unlock()
     {
@@ -133,7 +146,7 @@ int main(int argc, char *argv[])
 
     const int algoMode = std::stoi(argv[1]);
     const int threadCt = std::stoi(argv[2]);
-    vector<pthread_t> threads;
+    vector<pthread_t>* threads = new vector<pthread_t>();
 
     if (algoMode < 0 || algoMode > 2)
     {
@@ -152,7 +165,7 @@ int main(int argc, char *argv[])
     switch (algoMode)
     {
     case 0:
-        mutex = new Tournament(threadCt);
+        mutex = new Tournament(threads);
         break;
     case 1:
         mutex = new TestAndSet();
@@ -171,10 +184,10 @@ int main(int argc, char *argv[])
     {
         pthread_t newThread;
         pthread_create(&newThread, NULL, threadFunction, &args);
-        threads.push_back(newThread);
+        threads->push_back(newThread);
     }
 
-    for(auto thread : threads) pthread_join(thread, NULL);
+    for(auto thread : *threads) pthread_join(thread, NULL);
 
     cout << "Counter finished with " << *(args.sharedCounter) << ". Expected " << threadCt * TESTVALUE << std::endl;
 }
