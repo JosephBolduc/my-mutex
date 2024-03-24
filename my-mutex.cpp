@@ -40,70 +40,94 @@ public:
 
 class Tournament : public Mutex
 {
-    vector<Petersons*> mutexList;
-    pthread_t* threadList;
-
-    int threadCount;
-
-    public:
-    Tournament(pthread_t* threads, int threadCt)
+    // Stores both mutexes and threads
+    struct TreeNode
     {
-        threadCount = threadCt;
-        threadList = threads;
-        for(int i=0; i<threadCount; i++) mutexList.push_back(new Petersons());
-    }
+        bool isMutex;
+        Petersons* mutex;
+        pthread_t tId;
+    };
 
-    int getThreadID()
+    int threadCt;
+    pthread_t* threadIdArr;
+    int treeSize;
+    TreeNode* treeList;
+
+public:
+    Tournament(pthread_t* threadArr, int arrSize)
     {
-        pthread_t thread = pthread_self();
-        while(true) for(int idx = 0; idx < threadCount; idx++) if (thread == threadList[idx]) return idx;
-
+        threadIdArr = threadArr;
+        threadCt = arrSize;
+        treeSize = arrSize * 2 - 1;
+        treeList = new TreeNode[treeSize];
+        for (size_t i = 0; i < threadCt-1; i++) 
+        {
+            treeList[i].isMutex = true;
+            treeList[i].mutex = new Petersons();
+        }
+        for (size_t i = threadCt; i < threadCt*2; i++)
+        {
+            treeList[i].isMutex = false;
+        }
     }
 
     void Lock()
     {
-        int threadID = getThreadID();
-        int currentLock = threadCount - threadID + 1;
-        int prevLock = 9999;
+        int prevNode = getNodeFromTree();
+        int curNode = getParentNode(prevNode);
         while(true)
         {
-            bool lockFromLeft = getLockDirection(prevLock, currentLock);
-            mutexList.at(currentLock)->Lock(lockFromLeft);
-            if (currentLock == 0 ) break;
-            prevLock = currentLock;
-            currentLock = getParentNodeIdx(currentLock);
+            bool lockFromLeft = getLockDirection(prevNode, curNode);
+            treeList[curNode].mutex->Lock(lockFromLeft);
+            if(curNode == 0) break;
+            prevNode = curNode;
+            curNode = getParentNode(curNode);
         }
     }
-
 
     void Unlock()
     {
-        int threadID = getThreadID();
-        int currentLock = threadCount - threadID + 1;
         vector<int> lockList;
+        int prevNode = getNodeFromTree();
+        int curNode = getParentNode(prevNode);
+        lockList.push_back(prevNode);
         while(true)
         {
-            if(currentLock == 0) 
-            {
-                lockList.push_back(0);
-                break;
-            }
-            lockList.push_back(currentLock);
-            currentLock = getParentNodeIdx(currentLock);
+            lockList.push_back(curNode);
+            if(curNode == 0) break;
+            curNode = getParentNode(curNode);
         }
-
-        for(int idx = lockList.size() - 1; idx >= 0; idx--)
+        
+        for(int i = lockList.size() - 1; i >= 0; i--)
         {
-            bool unlockFromLeft;
-            if(idx > 0) unlockFromLeft = getLockDirection(lockList[idx-1], lockList[idx]);
-            else unlockFromLeft = getLockDirection(9999, lockList[0]);
-
-            mutexList[lockList[idx]]->Unlock(unlockFromLeft);
+            curNode = lockList[i];
+            if(!treeList[curNode].isMutex) return;
+            bool lockFromLeft = getLockDirection(lockList[i-1], curNode);
+            treeList[curNode].mutex->Unlock(lockFromLeft);
         }
-
     }
 
-    int getParentNodeIdx(int idx)
+    int getNodeFromTree()
+    {
+        pthread_t tid = pthread_self();
+        int idx = 9999;
+
+        while(idx == 9999)
+        {
+            for(int i=0; i<threadCt; i++)
+            {
+                //cout << "checking threadid" << threadIdArr[i] << "\n";
+                if(threadIdArr[i] == tid)
+                {
+                    idx = i;
+                }
+            }
+        }
+        treeList[idx + threadCt - 1].tId = tid;
+        return idx + threadCt - 1;
+    }
+
+    int getParentNode(int idx)
     {
         return ceil((float)idx / 2.0f) - 1;
     }
@@ -113,16 +137,12 @@ class Tournament : public Mutex
         return 2 * idx + (getLeft ? 1 : 2);
     }
 
-    // Returns if the lock is left or not left
-    bool getLockDirection(int previousIdx, int targetIdx)
+    // Returns if the target idx node is the left child of the previous idx node
+    bool getLockDirection(int childIdx, int parentIdx)
     {
-        if (getChildNode(targetIdx) > threadCount)
-        {
-            if (getThreadID() % 2 == 0) return true;
-            else return false;
-        }
-        if (getChildNode(targetIdx) == previousIdx) return true;
-        return false;
+        if(getChildNode(parentIdx, true) == childIdx) return true;
+        if(getChildNode(parentIdx, false) == childIdx) return false;
+        throw new std::exception();
     }
 };
 
