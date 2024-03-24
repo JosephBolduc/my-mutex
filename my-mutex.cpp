@@ -4,6 +4,7 @@
 #include <math.h>
 #include <atomic>
 #include <pthread.h>
+#include <stdexcept>
 
 using std::cout;
 using std::vector;
@@ -15,75 +16,6 @@ class Mutex
     public:
     virtual void Lock() = 0;
     virtual void Unlock() = 0;
-};
-
-class Tournament : public Mutex
-{
-    struct Node
-    {
-        Node* left;
-        Node* right;
-        Node* parent;
-        Petersons* mutex;
-        Node()
-        {
-            mutex = new Petersons();
-        }
-    };
-
-    vector<Node*> baseLayer;
-
-    int threadCount;
-
-    public:
-    Tournament(vector<pthread_t> threads)
-    {
-        threadCount = threads.size();
-        for(int i=0; i<threadCount; i++) mutexList.push_back(new Petersons());
-    }
-
-    void Lock()
-    {
-        // TODO figure out which thread goes to which lock
-        vector<int> lockedList;
-        int currentLock;
-        do
-        {
-            mutexList[currentLock]->Lock();
-            lockedList.push_back(currentLock);
-            currentLock = ceil((float)currentLock / 2.0f) - 1;
-        } while (lockedList.back() != 0);
-    }
-
-
-    void Unlock()
-    {
-        // TODO figure out which thread goes to which lock
-        vector<int> lockedList;
-        int currentLock;
-        do
-        {
-            lockedList.push_back(currentLock);
-            currentLock = getParentNodeIdx(currentLock);
-        } while (lockedList.back() != 0);
-
-        for (size_t idx = lockedList.size()-1; idx <= 0; idx--)
-        {
-            bool directionIsLeft;
-            if(getChildNode > )
-            mutexList[lockedList[idx]]->Unlock();
-        }
-    }
-
-    int getParentNodeIdx(int idx)
-    {
-        return ceil((float)idx / 2.0f) - 1;
-    }
-
-    int getChildNode(int idx, bool getLeft = true)
-    {
-        return 2 * idx + (getLeft ? 1 : 2);
-    }
 };
 
 class Petersons
@@ -103,6 +35,94 @@ public:
     {
         int id = isLeft ? 0 : 1;
         flag[id] = false;
+    }
+};
+
+class Tournament : public Mutex
+{
+    vector<Petersons*> mutexList;
+    pthread_t* threadList;
+
+    int threadCount;
+
+    public:
+    Tournament(pthread_t* threads, int threadCt)
+    {
+        threadCount = threadCt;
+        threadList = threads;
+        for(int i=0; i<threadCount; i++) mutexList.push_back(new Petersons());
+    }
+
+    int getThreadID()
+    {
+        pthread_t thread = pthread_self();
+        while(true) for(int idx = 0; idx < threadCount; idx++) if (thread == threadList[idx]) return idx;
+
+    }
+
+    void Lock()
+    {
+        int threadID = getThreadID();
+        int currentLock = threadCount - threadID + 1;
+        int prevLock = 9999;
+        while(true)
+        {
+            bool lockFromLeft = getLockDirection(prevLock, currentLock);
+            mutexList.at(currentLock)->Lock(lockFromLeft);
+            if (currentLock == 0 ) break;
+            prevLock = currentLock;
+            currentLock = getParentNodeIdx(currentLock);
+        }
+    }
+
+
+    void Unlock()
+    {
+        int threadID = getThreadID();
+        int currentLock = threadCount - threadID + 1;
+        vector<int> lockList;
+        while(true)
+        {
+            if(currentLock == 0) 
+            {
+                lockList.push_back(0);
+                break;
+            }
+            lockList.push_back(currentLock);
+            currentLock = getParentNodeIdx(currentLock);
+        }
+
+        for(int idx = lockList.size() - 1; idx >= 0; idx--)
+        {
+            bool unlockFromLeft;
+            if(idx > 0) unlockFromLeft = getLockDirection(lockList[idx-1], lockList[idx]);
+            else unlockFromLeft = getLockDirection(9999, lockList[0]);
+
+            mutexList[lockList[idx]]->Unlock(unlockFromLeft);
+        }
+
+    }
+
+    int getParentNodeIdx(int idx)
+    {
+        return ceil((float)idx / 2.0f) - 1;
+    }
+
+    int getChildNode(int idx, bool getLeft = true)
+    {
+        return 2 * idx + (getLeft ? 1 : 2);
+    }
+
+    // Returns if the lock is left or not left
+    bool getLockDirection(int previousIdx, int targetIdx)
+    {
+        if (getChildNode(targetIdx) > threadCount)
+        {
+            if (getThreadID() % 2 == 0) return true;
+            else return false;
+        }
+        if (getChildNode(targetIdx) == previousIdx) return true;
+        return false;
     }
 };
 
@@ -146,7 +166,8 @@ int main(int argc, char *argv[])
 
     const int algoMode = std::stoi(argv[1]);
     const int threadCt = std::stoi(argv[2]);
-    vector<pthread_t>* threads = new vector<pthread_t>();
+    pthread_t* threads = (pthread_t*) malloc(sizeof(pthread_t) * threadCt);
+    for(int idx = 0; idx < threadCt; idx++) threads[idx] = 0;
 
     if (algoMode < 0 || algoMode > 2)
     {
@@ -165,7 +186,7 @@ int main(int argc, char *argv[])
     switch (algoMode)
     {
     case 0:
-        mutex = new Tournament(threads);
+        mutex = new Tournament(threads, threadCt);
         break;
     case 1:
         mutex = new TestAndSet();
@@ -184,10 +205,10 @@ int main(int argc, char *argv[])
     {
         pthread_t newThread;
         pthread_create(&newThread, NULL, threadFunction, &args);
-        threads->push_back(newThread);
+        threads[i] = newThread;
     }
 
-    for(auto thread : *threads) pthread_join(thread, NULL);
+    for(int idx = 0; idx < threadCt; idx++) pthread_join(threads[idx], NULL);
 
     cout << "Counter finished with " << *(args.sharedCounter) << ". Expected " << threadCt * TESTVALUE << std::endl;
 }
