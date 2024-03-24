@@ -1,6 +1,6 @@
 CC = g++
 EXECUTABLE = my-mutex
-CFLAGS = -std=c++1y -o3
+CFLAGS = -std=c++1y -o3 -lpthread
 
 all: $(EXECUTABLE)
 
