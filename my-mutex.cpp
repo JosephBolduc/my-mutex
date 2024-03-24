@@ -11,6 +11,7 @@ using std::vector;
 
 void *threadFunction(void*);
 
+// Interface the three mutex types implement
 class Mutex
 {
     public:
@@ -18,6 +19,7 @@ class Mutex
     virtual void Unlock() = 0;
 };
 
+// 2-thread lock to be used by the tournament tree
 class Petersons
 {
     std::atomic_bool flag[2];
@@ -107,6 +109,7 @@ public:
         }
     }
 
+    // Each thread is assigned a leaf node and has access to it
     int getNodeFromTree()
     {
         pthread_t tid = pthread_self();
@@ -168,12 +171,14 @@ class FetchAndIncrement : public Mutex
     void Unlock() { ++turn; }
 };
 
+// Simple struct for passing arguments to the 
 struct argPasser
 {
     Mutex* mutex;
     int* sharedCounter;
 };
 
+// How many times each thread should increment the shared variable
 const int TESTVALUE = 100;
 
 int main(int argc, char *argv[])
@@ -200,7 +205,6 @@ int main(int argc, char *argv[])
         cout << "Use at least one thread!\n";
         return -1;
     }
-
 
     Mutex* mutex;
     switch (algoMode)
